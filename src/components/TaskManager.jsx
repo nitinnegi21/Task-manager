@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Check, X, Filter, BarChart3, Calendar, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { ServiceCall } from '../utility/servicecall';
 
 const TaskManager = () => {
   const [tasks, setTasks] = useState([]);
@@ -18,9 +19,6 @@ const TaskManager = () => {
     medium_priority_tasks: 0,
     low_priority_tasks: 0
   });
-
-  // API Base URL
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
   // Form state
   const [formData, setFormData] = useState({
@@ -51,47 +49,34 @@ const TaskManager = () => {
     fetchStats();
   }, []);
 
-  // API Functions
-  const apiCall = async (url, options = {}) => {
+  // Fetch all tasks
+  const fetchTasks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}${url}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-        ...options,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
+      const response = await ServiceCall.getv2('/tasks');
+      
+      // Handle the wrapped response structure
+      const tasksData = response.data.data.tasks || [];
+      setTasks(tasksData);
     } catch (error) {
-      setError(`API Error: ${error.message}`);
-      throw error;
+      console.error('Failed to fetch tasks:', error);
+      setError(error.response?.data?.error || 'Failed to fetch tasks');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTasks = async () => {
-    try {
-      const data = await apiCall('/tasks');
-      setTasks(data);
-    } catch (error) {
-      console.error('Failed to fetch tasks:', error);
-    }
-  };
-
+  // Fetch statistics
   const fetchStats = async () => {
     try {
-      const data = await apiCall('/tasks/stats');
-      setStats(data);
+      const response = await ServiceCall.getv2('/tasks/stats');
+      
+      // Handle the wrapped response structure
+      const statsData = response.data.data || {};
+      setStats(statsData);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
+      setError(error.response?.data?.error || 'Failed to fetch statistics');
     }
   };
 
@@ -108,10 +93,11 @@ const TaskManager = () => {
   // Create task
   const createTask = async (taskData) => {
     try {
-      const newTask = await apiCall('/tasks', {
-        method: 'POST',
-        body: JSON.stringify(taskData),
-      });
+      setLoading(true);
+      const response = await ServiceCall.postv2('/tasks', '', taskData);
+      
+      // Handle the wrapped response structure
+      const newTask = response.data.data;
       
       setTasks([newTask, ...tasks]);
       resetForm();
@@ -120,16 +106,20 @@ const TaskManager = () => {
       fetchStats();
     } catch (error) {
       console.error('Failed to create task:', error);
+      setError(error.response?.data?.error || 'Failed to create task');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Update task
   const updateTask = async (taskId, taskData) => {
     try {
-      const updatedTask = await apiCall(`/tasks/${taskId}`, {
-        method: 'PUT',
-        body: JSON.stringify(taskData),
-      });
+      setLoading(true);
+      const response = await ServiceCall.putv2('/tasks/', taskId, taskData);
+      
+      // Handle the wrapped response structure
+      const updatedTask = response.data.data;
       
       setTasks(tasks.map(task => 
         task.id === taskId ? updatedTask : task
@@ -141,6 +131,9 @@ const TaskManager = () => {
       fetchStats();
     } catch (error) {
       console.error('Failed to update task:', error);
+      setError(error.response?.data?.error || 'Failed to update task');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -149,9 +142,8 @@ const TaskManager = () => {
     if (!window.confirm('Are you sure you want to delete this task?')) return;
     
     try {
-      await apiCall(`/tasks/${taskId}`, {
-        method: 'DELETE',
-      });
+      setLoading(true);
+      await ServiceCall.deletev2('/tasks/', taskId);
       
       setTasks(tasks.filter(task => task.id !== taskId));
       setError('');
@@ -159,15 +151,20 @@ const TaskManager = () => {
       fetchStats();
     } catch (error) {
       console.error('Failed to delete task:', error);
+      setError(error.response?.data?.error || 'Failed to delete task');
+    } finally {
+      setLoading(false);
     }
   };
 
   // Toggle task completion
   const toggleTask = async (taskId) => {
     try {
-      const updatedTask = await apiCall(`/tasks/${taskId}/toggle`, {
-        method: 'PATCH',
-      });
+      setLoading(true);
+      const response = await ServiceCall.patchv2('/tasks/', `${taskId}/toggle`, {});
+      
+      // Handle the wrapped response structure
+      const updatedTask = response.data.data;
       
       setTasks(tasks.map(task => 
         task.id === taskId ? updatedTask : task
@@ -176,6 +173,9 @@ const TaskManager = () => {
       fetchStats();
     } catch (error) {
       console.error('Failed to toggle task:', error);
+      setError(error.response?.data?.error || 'Failed to toggle task');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -262,7 +262,6 @@ const TaskManager = () => {
                 Task Manager
               </h1>
               <p className="text-gray-400">Organize and manage your tasks efficiently</p>
-              <p className="text-gray-500 text-sm mt-1">Connected to: {API_BASE_URL}</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -302,7 +301,7 @@ const TaskManager = () => {
         )}
 
         {/* Statistics Panel */}
-        {/* {showStats && (
+        {showStats && (
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
             <h2 className="text-xl font-semibold text-gray-100 mb-6 flex items-center gap-2">
               <BarChart3 className="text-blue-400" size={24} />
@@ -324,10 +323,10 @@ const TaskManager = () => {
               ))}
             </div>
           </div>
-        )} */}
+        )}
 
         {/* Filters */}
-        {/* <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <div className="flex items-center gap-2 mb-4">
             <Filter className="text-blue-400" size={20} />
             <h3 className="text-lg font-semibold text-gray-100">Filter Tasks</h3>
@@ -352,7 +351,7 @@ const TaskManager = () => {
               </button>
             ))}
           </div>
-        </div> */}
+        </div>
 
         {/* Add/Edit Task Form */}
         {showAddForm && (
